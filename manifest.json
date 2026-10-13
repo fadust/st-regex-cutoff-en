@@ -1,13 +1,13 @@
 {
-    "display_name": "正则截断 (Regex Cutoff)",
+    "display_name": "Regex Cutoff (English)",
     "loading_order": 10000,
     "requires": [],
     "optional": [],
     "dependencies": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "碎叶哨所设定",
+    "author": "碎叶哨所设定 · English port by fadust",
     "version": "1.3.0",
-    "homePage": "",
+    "homePage": "https://github.com/fadust/st-regex-cutoff-en",
     "auto_update": false
 }

@@ -1,55 +1,71 @@
-# 正则截断 (Regex Cutoff)
+# Regex Cutoff (English)
 
-SillyTavern 第三方 UI 扩展：按可配置的正则组实时检测 AI 回复，命中即中止生成并截断消息。
+> **Unofficial English port.** This is a community translation of
+> [st-regex-cutoff (正则截断)](https://github.com/LeenHawk/st-regex-cutoff) by **LeenHawk (碎叶哨所设定)**. All credit for the extension goes to the original author.
+> Only user-facing text (UI, toasts, logs, docs) was translated; behavior is unchanged.
+> The original Chinese README is kept as [README.zh-CN.md](README.zh-CN.md).
+>
+> The original repository has no license file. This port is published without the author's explicit permission, as a courtesy translation.
+>
+> **If you are the original author and want this port taken down or changed, open an issue here and it will be removed promptly.**
+>
+> Report translation problems here. Report bugs in the extension itself upstream.
 
-## 功能
+A third-party UI extension for SillyTavern. It checks AI replies in real time against configurable regex groups. On a match it aborts generation and cuts the message.
 
-- **多正则组**：每组内含多条正则（每行一条），组内逻辑可选：
-  - **任一命中（并集）**：组内任意一条正则匹配即视为该组命中
-  - **全部命中（交集）**：组内所有正则都匹配才视为该组命中
-- 组与组之间为并集：任何一组命中即触发。
-- **触发后的行为**：
-  1. 流式生成中实时检测，命中立即中止生成（可关闭）；
-  2. 从「最早命中位置」截断消息（命中文本及其之后全部删除），并在此基础上再**往前多删 X 个字符**（X 可在设置里调整，按码点计数，CJK/emoji 均按 1 个字算）；
-  3. 非流式或流式期间漏检时，在消息落库后兜底检测并截断。
-- 截断结果会同步写入当前 swipe 并保存聊天记录。
-- 可配置在正则截断后的消息末尾追加一段文本或脚本内容；留空时不追加，追加内容不会再次参与正则检测。
-- 内置测试框：粘贴文本即可预览命中分组与截断效果。
-- 斜杠命令 `/regexcut`：手动对最后一条 AI 消息执行检测截断。
+## Features
 
-## 分段自动续写
+- **Multiple regex groups.** Each group holds several regexes, one per line. Group logic is selectable:
+  - **Any match (OR):** the group matches if any one of its regexes matches.
+  - **All match (AND):** the group matches only if every regex in it matches.
+- Groups are OR-ed together: any matching group triggers.
+- **What happens on a trigger:**
+  1. While streaming, text is checked live and generation is aborted on a match (can be turned off).
+  2. The message is cut at the **earliest match position** (the matched text and everything after it are deleted). Then **X more characters before it** are deleted too. X is set in the settings and counted in code points; each CJK character or emoji counts as 1.
+  3. For non-streaming replies, or matches missed during streaming, a fallback check runs after the message is saved.
+- The cut result is written to the current swipe and the chat is saved.
+- Optionally append text or script content to the end of a message after a regex cut. Leave it empty to append nothing. Appended content is not re-checked by the regexes.
+- Built-in test box: paste text to preview which groups match and how it gets cut.
+- Slash command `/regexcut`: manually run detection and cutoff on the last AI message.
 
-分段生成长回复（需开启流式输出），分段条件有两种，**可各自开关、并行生效，先满足者先截断**：
+## Segmented auto-continue
 
-- **按 token**：流式生成中实时计数，本段 token 数达到阈值即截断；
-- **按时长**：本段从收到第一个流式片段开始计时，达到设定秒数即截断（默认 30 秒，可关闭）；
-- 两项都不勾选时不会分段；两项同时勾选时哪个先到就按哪个截断。
+Generates long replies in segments (streaming must be on). There are two segment conditions. **Each can be toggled on its own; they run in parallel and whichever is met first cuts:**
 
-截断之后：
+- **By tokens:** counted live while streaming; the segment is cut when it reaches the threshold.
+- **By time:** timed from the segment's first streamed chunk; the segment is cut after the set number of seconds (default 30, can be turned off).
+- With neither ticked, no segmenting happens. With both ticked, whichever comes first cuts.
 
-- 自动注入**续写提示词**并触发 ST 原生「继续」机制续写下一段，
-  每段开始时 token 计数与计时自动清零；
-- **最大总 token**：整条消息达到该值后停止续写；
-- 续写提示词通过 `setExtensionPrompt` 注入，**只进入本次请求的 prompt，
-  不写入对话记录**，注入角色可选 system / user，默认使用 user，兼容不允许请求以 assistant 结尾的 Claude 接口；
-- 发起续写前会同时清理聊天消息和最终请求中 assistant 内容末尾的空白；若最终请求仍以 assistant 结尾，会追加临时 user 提示，兼容 Claude 的消息校验；
-- 手动点「停止」不会触发续写；正则命中截断的消息也不再续写；
-- 内置轮次安全上限：按 token 分段为 ⌈最大总量 ÷ 每段⌉ + 3，纯按时长分段为 200 轮，防止失控循环。
+After a cut:
 
-## 正则写法
+- A **continuation prompt** is injected automatically and ST's native "Continue" generates the next segment. The token count and timer reset at the start of each segment.
+- **Max total tokens:** continuation stops once the whole message reaches this value.
+- The continuation prompt is injected via `setExtensionPrompt`. **It goes into this request's prompt only and is never written to the chat.** Inject role is system or user; the default is user, for Claude APIs that reject requests ending with assistant.
+- Before continuing, trailing whitespace is trimmed from assistant content in both the chat message and the final request. If the final request still ends with assistant, a temporary user prompt is appended to pass Claude's message validation.
+- Pressing **Stop** manually does not trigger a continuation. A message cut by a regex match is not continued either.
+- Built-in round safety limit: ⌈max total ÷ per segment⌉ + 3 when segmenting by tokens, 200 rounds when segmenting by time only. This prevents runaway loops.
 
-每行一条，两种写法：
+## Regex syntax
+
+One per line, two forms:
 
 ```
-未完待续
+To be continued
 /to be continued/i
 ```
 
-- 普通写法默认无 flags；
-- `/pattern/flags` 写法支持 flags（`g`、`y` 会被自动剔除）；
-- 空行忽略；非法正则不会导致报错，会在组内以红字提示并跳过。
+- Plain patterns have no flags.
+- The `/pattern/flags` form supports flags (`g` and `y` are stripped automatically).
+- Empty lines are ignored. An invalid regex does not throw; it is shown in red inside its group and skipped.
 
-## 安装
+## Installation
 
-SillyTavern → 扩展 → 安装扩展，填入本仓库地址；或将本目录放入
-`SillyTavern/data/<user>/extensions/`（或 `public/scripts/extensions/third-party/`）。
+SillyTavern → Extensions → Install extension, and enter this repository's URL:
+
+```
+https://github.com/fadust/st-regex-cutoff-en
+```
+
+Or put this folder in `SillyTavern/data/<user>/extensions/` (or `public/scripts/extensions/third-party/`).
+
+Do not install this alongside the original Chinese version; both use the same settings key and would conflict. Your existing settings carry over if you switch.

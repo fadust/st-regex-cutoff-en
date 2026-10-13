@@ -25,11 +25,11 @@
  */
 
 const MODULE_NAME = 'regex_cutoff';
-const LOG = '[正则截断]';
+const LOG = '[Regex Cutoff]';
 const SETTINGS_VERSION = 3;
 
 const DEFAULT_GROUP = Object.freeze({
-    name: '新分组',
+    name: 'New group',
     enabled: true,
     mode: 'any',        // any = 任一命中（并集）；all = 全部命中（交集）
     patterns: '',       // 每行一条正则；支持 /pattern/flags 写法
@@ -132,10 +132,10 @@ function compileGroups(s) {
             try {
                 regexes.push(parsePatternLine(line));
             } catch (e) {
-                errors.push(`「${line}」：${e.message}`);
+                errors.push(`"${line}": ${e.message}`);
             }
         }
-        return { idx, name: g.name || `分组${idx + 1}`, enabled: !!g.enabled, mode: g.mode === 'all' ? 'all' : 'any', regexes, errors };
+        return { idx, name: g.name || `Group ${idx + 1}`, enabled: !!g.enabled, mode: g.mode === 'all' ? 'all' : 'any', regexes, errors };
     });
 
     compiledCache = { key, groups };
@@ -196,7 +196,7 @@ async function countTokens(text) {
         if (typeof ctx.getTokenCountAsync === 'function') return await ctx.getTokenCountAsync(text);
         if (typeof ctx.getTokenCount === 'function') return ctx.getTokenCount(text);
     } catch (e) {
-        console.warn(LOG, 'token 计数失败，退回估算：', e);
+        console.warn(LOG, 'Token count failed, falling back to estimate: ', e);
     }
     return Math.ceil(String(text ?? '').length / 3);
 }
@@ -206,7 +206,7 @@ function setContinuePrompt(text) {
     try {
         const ctx = SillyTavern.getContext();
         if (typeof ctx.setExtensionPrompt !== 'function') {
-            console.warn(LOG, '当前 ST 版本不支持 setExtensionPrompt，续写提示词无法注入');
+            console.warn(LOG, 'This ST version does not support setExtensionPrompt; the continuation prompt cannot be injected');
             return;
         }
         const s = getSettings();
@@ -215,7 +215,7 @@ function setContinuePrompt(text) {
         const role = s.autoContinue.role === 'user' ? roles.USER : roles.SYSTEM;
         ctx.setExtensionPrompt(MODULE_NAME, String(text ?? ''), IN_CHAT, 0, false, role);
     } catch (e) {
-        console.warn(LOG, '注入续写提示词失败：', e);
+        console.warn(LOG, 'Failed to inject continuation prompt: ', e);
     }
 }
 
@@ -271,7 +271,7 @@ async function onGenerationStarted(type, _params, dryRun) {
             const idx = findLastAssistantIndex(chat);
             if (idx >= 0) streamBaselineTokens = await countTokens(String(chat[idx].mes ?? ''));
         } catch (e) {
-            console.warn(LOG, '计算续写基线 token 失败：', e);
+            console.warn(LOG, 'Failed to compute continuation baseline tokens: ', e);
         }
     }
 }
@@ -287,7 +287,7 @@ async function onStreamToken(raw) {
             const hit = detect(text, s);
             if (hit) {
                 abortedThisGen = true;
-                console.log(LOG, `流式命中分组 [${hit.groupNames.join('、')}]，中止生成`);
+                console.log(LOG, `Streaming hit group [${hit.groupNames.join(', ')}], aborting generation`);
                 stopGenerationNow();
                 return;
             }
@@ -309,7 +309,7 @@ async function onStreamToken(raw) {
             if (elapsed >= limitMs) {
                 segmentAbortedThisGen = true;
                 segmentAbortReason = 'seconds';
-                console.log(LOG, `本段已生成 ${(elapsed / 1000).toFixed(1)} 秒，达到上限 ${ac.segmentSeconds} 秒，截断本段`);
+                console.log(LOG, `This segment has run ${(elapsed / 1000).toFixed(1)} s, reached limit ${ac.segmentSeconds} s, cutting segment`);
                 stopGenerationNow();
                 return;
             }
@@ -327,14 +327,14 @@ async function onStreamToken(raw) {
                 segment >= Math.max(1, Number(ac.segmentTokens) || 0)) {
                 segmentAbortedThisGen = true;
                 segmentAbortReason = 'tokens';
-                console.log(LOG, `本段已生成 ${segment} token，达到上限 ${ac.segmentTokens}，截断本段`);
+                console.log(LOG, `This segment has generated ${segment} tokens, reached limit ${ac.segmentTokens}, cutting segment`);
                 stopGenerationNow();
             }
         } finally {
             tokenCheck.busy = false;
         }
     } catch (e) {
-        console.error(LOG, '流式检测出错：', e);
+        console.error(LOG, 'Streaming check error: ', e);
     }
 }
 
@@ -370,13 +370,13 @@ function onGenerateAfterData(generateData, dryRun) {
 
     const assistantIdx = messages.findLastIndex((message) => message?.role === 'assistant');
     if (assistantIdx >= 0 && trimRequestMessageEnd(messages[assistantIdx])) {
-        console.log(LOG, '续写请求发送前已清理 assistant 尾部空白');
+        console.log(LOG, 'Trimmed trailing assistant whitespace before sending continuation request');
     }
 
     if (messages.at(-1)?.role === 'assistant') {
         const prompt = String(getSettings().autoContinue.prompt ?? '').trim() || 'Continue the reply.';
         messages.push({ role: 'user', content: prompt });
-        console.log(LOG, '续写请求原本以 assistant 结尾，已追加临时 user 提示');
+        console.log(LOG, 'Continuation request originally ended with assistant; appended a temporary user prompt');
     }
 }
 
@@ -406,7 +406,7 @@ async function updateAssistantMessageText(ctx, idx, text) {
             await ctx.reloadCurrentChat();
         }
     } catch (e) {
-        console.warn(LOG, '刷新消息渲染失败：', e);
+        console.warn(LOG, 'Failed to refresh message rendering: ', e);
     }
     try {
         await ctx.eventSource.emit(ctx.event_types.MESSAGE_UPDATED, idx);
@@ -414,7 +414,7 @@ async function updateAssistantMessageText(ctx, idx, text) {
     try {
         if (ctx.saveChat) await ctx.saveChat();
     } catch (e) {
-        console.warn(LOG, 'saveChat 失败：', e);
+        console.warn(LOG, 'saveChat failed: ', e);
     }
 }
 
@@ -444,7 +444,7 @@ async function applyCutToLastMessage({ silent = false } = {}) {
     }
 
     if (text === original) {
-        if (!silent) toastr.info('最后一条 AI 消息未命中任何正则组', '正则截断');
+        if (!silent) toastr.info('Last AI message did not match any regex group', 'Regex Cutoff');
         return false;
     }
 
@@ -455,10 +455,10 @@ async function applyCutToLastMessage({ silent = false } = {}) {
 
     const removed = Array.from(original).length - Array.from(cutResult).length;
     const appendedCount = Array.from(appended).length;
-    const appendSummary = appendedCount > 0 ? `，追加 ${appendedCount} 个字符` : '';
-    console.log(LOG, `已截断消息 #${idx}，命中分组 [${[...hitGroups].join('、')}]，删除 ${removed} 个字符${appendSummary}`);
+    const appendSummary = appendedCount > 0 ? `, appended ${appendedCount} characters` : '';
+    console.log(LOG, `Cut message #${idx}, matched group [${[...hitGroups].join(', ')}], deleted ${removed} characters${appendSummary}`);
     if (s.notify) {
-        toastr.success(`命中分组 [${[...hitGroups].join('、')}]，已截断并删除 ${removed} 个字符${appendSummary}`, '正则截断');
+        toastr.success(`Matched group [${[...hitGroups].join(', ')}], cut and deleted ${removed} characters${appendSummary}`, 'Regex Cutoff');
     }
     return true;
 }
@@ -498,7 +498,7 @@ async function maybeAutoContinue(regexCutApplied) {
     if (total >= maxTotal) {
         clearContinuePrompt();
         roundsThisMessage = 0;
-        if (s.notify) toastr.info(`已达最大总 token（${total}/${maxTotal}），停止续写`, '正则截断');
+        if (s.notify) toastr.info(`Reached max total tokens (${total}/${maxTotal}), stopping continuation`, 'Regex Cutoff');
         return;
     }
 
@@ -507,7 +507,7 @@ async function maybeAutoContinue(regexCutApplied) {
         ? Math.ceil(maxTotal / Math.max(1, Number(ac.segmentTokens) || 1)) + 3
         : SECONDS_ROUNDS_CAP;
     if (roundsThisMessage >= cap) {
-        console.warn(LOG, `续写轮次达到安全上限 ${cap}，停止`);
+        console.warn(LOG, `Continuation rounds reached safety limit ${cap}, stopping`);
         clearContinuePrompt();
         roundsThisMessage = 0;
         return;
@@ -517,15 +517,15 @@ async function maybeAutoContinue(regexCutApplied) {
     const trimmedText = messageText.trimEnd();
     if (trimmedText !== messageText) {
         await updateAssistantMessageText(ctx, idx, trimmedText);
-        console.log(LOG, `续写前已清理消息 #${idx} 末尾空白`);
+        console.log(LOG, `Trimmed trailing whitespace of message #${idx} before continuing`);
     }
     roundsThisMessage++;
 
     setContinuePrompt(ac.prompt);
     pendingAutoContinue = true;
     if (s.notify) {
-        const reasonText = reason === 'seconds' ? `已生成 ${ac.segmentSeconds} 秒` : `本段 token 达标`;
-        toastr.info(`${reasonText}，当前 ${total}/${maxTotal} token，自动续写第 ${roundsThisMessage} 段`, '正则截断');
+        const reasonText = reason === 'seconds' ? `Generated for ${ac.segmentSeconds} s` : `Segment token target reached`;
+        toastr.info(`${reasonText}, now ${total}/${maxTotal} tokens, auto-continuing segment ${roundsThisMessage}`, 'Regex Cutoff');
     }
     try {
         if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
@@ -533,12 +533,12 @@ async function maybeAutoContinue(regexCutApplied) {
         } else {
             pendingAutoContinue = false;
             clearContinuePrompt();
-            console.warn(LOG, '当前 ST 版本不支持 executeSlashCommandsWithOptions，无法自动续写');
+            console.warn(LOG, 'This ST version does not support executeSlashCommandsWithOptions; cannot auto-continue');
         }
     } catch (e) {
         pendingAutoContinue = false;
         clearContinuePrompt();
-        console.error(LOG, '触发续写失败：', e);
+        console.error(LOG, 'Failed to trigger continuation: ', e);
     }
 }
 
@@ -554,7 +554,7 @@ function scheduleFinalize() {
             const regexCut = await applyCutToLastMessage({ silent: true });
             await maybeAutoContinue(regexCut);
         } catch (e) {
-            console.error(LOG, '收尾处理出错：', e);
+            console.error(LOG, 'Finalization error: ', e);
         }
     }, 300);
 }
@@ -573,59 +573,59 @@ function buildSettingsHtml() {
     <div class="regex-cutoff-settings">
       <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-          <b>正则截断</b>
+          <b>Regex Cutoff</b>
           <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
 
           <label class="checkbox_label" for="rc_enabled">
             <input id="rc_enabled" type="checkbox" />
-            <span>启用本扩展</span>
+            <span>Enable this extension</span>
           </label>
 
           <label class="checkbox_label" for="rc_stream_abort">
             <input id="rc_stream_abort" type="checkbox" />
-            <span>流式生成中命中时立即中止生成</span>
+            <span>Abort generation immediately on a match while streaming</span>
           </label>
 
           <label class="checkbox_label" for="rc_notify">
             <input id="rc_notify" type="checkbox" />
-            <span>触发时弹出提示</span>
+            <span>Show a notification when triggered</span>
           </label>
 
           <div class="flex-container" style="align-items:center; gap:6px; margin-top:6px;">
-            <span>截断点再往前多删</span>
+            <span>Also delete</span>
             <input id="rc_delete_chars" type="number" min="0" step="1" class="text_pole" style="max-width:80px;" />
-            <span>个字符</span>
+            <span>extra characters before the cut point</span>
           </div>
-          <small class="notes">截断规则：删除“最早命中位置”及其之后的全部文本，再在此基础上往前多删 X 个字符。</small>
+          <small class="notes">Cut rule: delete everything from the earliest match position onward, then delete X more characters before it.</small>
 
-          <label for="rc_append_text" style="margin-top:6px;">截断后追加文本/脚本内容（留空则不追加）</label>
+          <label for="rc_append_text" style="margin-top:6px;">Text/script to append after the cut (leave empty to append nothing)</label>
           <textarea id="rc_append_text" class="text_pole textarea_compact" rows="3"
-            placeholder="内容会按原样追加到截断后的 AI 消息末尾"></textarea>
-          <small class="notes">只在正则命中并实际截断时追加；追加内容不会再次参与正则检测。</small>
+            placeholder="Appended as-is to the end of the cut AI message"></textarea>
+          <small class="notes">Appended only when a regex matches and a cut actually happens; appended text is not re-checked by the regexes.</small>
 
           <hr>
-          <h4>正则组</h4>
-          <small class="notes">组内每行一条正则，支持 <code>/pattern/flags</code> 写法（如 <code>/结局/i</code>），普通写法默认无 flags。组内逻辑可选“任一命中（并）”或“全部命中（交）”；组与组之间为并集，任何一组命中即触发。</small>
+          <h4>Regex groups</h4>
+          <small class="notes">One regex per line inside a group. <code>/pattern/flags</code> syntax is supported (e.g. <code>/the end/i</code>); plain patterns have no flags. Within a group choose "Any match (OR)" or "All match (AND)"; groups are OR-ed together, so any matching group triggers.</small>
 
           <div id="rc_groups"></div>
           <div class="menu_button" id="rc_add_group" style="margin-top:6px;">
-            <i class="fa-solid fa-plus"></i> 添加分组
+            <i class="fa-solid fa-plus"></i> Add group
           </div>
 
           <hr>
-          <h4>分段自动续写</h4>
+          <h4>Segmented auto-continue</h4>
 
           <label class="checkbox_label" for="rc_ac_enabled">
             <input id="rc_ac_enabled" type="checkbox" />
-            <span>启用：每段生成达到下列任一条件即截断，并自动续写下一段</span>
+            <span>Enable: cut each segment when any condition below is met, then auto-continue the next segment</span>
           </label>
 
           <div class="flex-container" style="align-items:center; gap:6px; margin-top:6px;">
             <label class="checkbox_label" for="rc_ac_by_tokens" style="margin:0;">
               <input id="rc_ac_by_tokens" type="checkbox" />
-              <span>按 token：每段</span>
+              <span>By tokens: every</span>
             </label>
             <input id="rc_ac_segment" type="number" min="50" step="50" class="text_pole" style="max-width:90px;" />
             <span>token</span>
@@ -634,37 +634,37 @@ function buildSettingsHtml() {
           <div class="flex-container" style="align-items:center; gap:6px; margin-top:6px;">
             <label class="checkbox_label" for="rc_ac_by_seconds" style="margin:0;">
               <input id="rc_ac_by_seconds" type="checkbox" />
-              <span>按时长：每段</span>
+              <span>By time: every</span>
             </label>
             <input id="rc_ac_seconds" type="number" min="1" step="1" class="text_pole" style="max-width:90px;" />
-            <span>秒</span>
+            <span>seconds</span>
           </div>
-          <small class="notes">两个条件可同时开启，并行判定、先到先截断；至少勾选一项，否则不会分段。计时从本段收到第一个流式片段开始。</small>
+          <small class="notes">Both conditions can be on at once; they run in parallel and whichever is met first cuts. Tick at least one, or no segmenting happens. Timing starts when the segment receives its first streamed chunk.</small>
 
           <div class="flex-container" style="align-items:center; gap:6px; margin-top:6px;">
-            <span>总量达</span>
+            <span>Stop continuing after</span>
             <input id="rc_ac_max" type="number" min="100" step="100" class="text_pole" style="max-width:90px;" />
-            <span>token 后停止续写</span>
+            <span>total tokens</span>
           </div>
 
-          <label for="rc_ac_prompt" style="margin-top:6px;">续写提示词（只注入本次请求，不进对话记录）</label>
+          <label for="rc_ac_prompt" style="margin-top:6px;">Continuation prompt (injected into this request only, never saved to chat)</label>
           <textarea id="rc_ac_prompt" class="text_pole textarea_compact" rows="3"></textarea>
 
           <div class="flex-container" style="align-items:center; gap:6px;">
-            <span>注入角色</span>
+            <span>Inject as role</span>
             <select id="rc_ac_role" class="text_pole" style="max-width:120px;">
               <option value="system">system</option>
               <option value="user">user</option>
             </select>
           </div>
-          <small class="notes">需要开启流式输出才能按段截断。续写走 ST 原生“继续”机制，每段开始时 token 计数与计时自动清零；默认以 user 角色注入，兼容不允许请求以 assistant 结尾的 Claude 接口；手动点停止不会触发续写；若正则命中截断，续写同样终止。</small>
+          <small class="notes">Streaming must be on for segment cuts. Continuation uses ST's native "Continue"; the token count and timer reset at the start of each segment. Injected as user by default, for Claude APIs that reject requests ending with assistant. Pressing Stop manually does not trigger a continuation; a regex cut also ends the continuation loop.</small>
 
           <hr>
-          <h4>测试与手动执行</h4>
-          <textarea id="rc_test_input" class="text_pole textarea_compact" rows="3" placeholder="粘贴一段文本，测试当前规则的命中与截断效果"></textarea>
+          <h4>Test and manual run</h4>
+          <textarea id="rc_test_input" class="text_pole textarea_compact" rows="3" placeholder="Paste some text to test how the current rules match and cut"></textarea>
           <div class="flex-container" style="gap:6px; margin-top:4px;">
-            <div class="menu_button" id="rc_test_run">测试</div>
-            <div class="menu_button" id="rc_apply_last">对最后一条 AI 消息执行截断</div>
+            <div class="menu_button" id="rc_test_run">Test</div>
+            <div class="menu_button" id="rc_apply_last">Run cutoff on the last AI message</div>
           </div>
           <div id="rc_test_result" class="notes" style="white-space:pre-wrap;"></div>
 
@@ -677,16 +677,18 @@ function groupHtml(g, i) {
     return `
     <div class="rc_group" data-idx="${i}">
       <div class="flex-container rc_group_header" style="align-items:center; gap:6px;">
-        <input type="checkbox" class="rc_g_enabled" title="启用该组" ${g.enabled ? 'checked' : ''} />
-        <input type="text" class="rc_g_name text_pole" style="flex:1;" placeholder="分组名" value="${escapeHtml(g.name)}" />
+        <input type="checkbox" class="rc_g_enabled" title="Enable this group" ${g.enabled ? 'checked' : ''} />
+        <input type="text" class="rc_g_name text_pole" style="flex:1;" placeholder="Group name" value="${escapeHtml(g.name)}" />
         <select class="rc_g_mode text_pole" style="max-width:150px;">
-          <option value="any" ${g.mode !== 'all' ? 'selected' : ''}>任一命中（并）</option>
-          <option value="all" ${g.mode === 'all' ? 'selected' : ''}>全部命中（交）</option>
+          <option value="any" ${g.mode !== 'all' ? 'selected' : ''}>Any match (OR)</option>
+          <option value="all" ${g.mode === 'all' ? 'selected' : ''}>All match (AND)</option>
         </select>
-        <div class="menu_button rc_g_del" title="删除该组"><i class="fa-solid fa-trash-can"></i></div>
+        <div class="menu_button rc_g_del" title="Delete this group"><i class="fa-solid fa-trash-can"></i></div>
       </div>
       <textarea class="rc_g_patterns text_pole textarea_compact" rows="3"
-        placeholder="每行一条正则，例如：\n(?:未完待续|全文完)\n/to be continued/i">${escapeHtml(g.patterns)}</textarea>
+        placeholder="One regex per line, e.g.:
+(?:The End|Fin)
+/to be continued/i">${escapeHtml(g.patterns)}</textarea>
       <small class="rc_g_err notes"></small>
     </div>`;
 }
@@ -707,7 +709,7 @@ function refreshGroupErrors() {
         const g = compiled[i];
         const $err = $(this).find('.rc_g_err');
         if (g && g.errors.length > 0) {
-            $err.text('正则错误：' + g.errors.join('；')).addClass('rc_err_on');
+            $err.text('Regex error: ' + g.errors.join('; ')).addClass('rc_err_on');
         } else {
             $err.text('').removeClass('rc_err_on');
         }
@@ -803,17 +805,19 @@ function bindUI() {
     $('#rc_test_run').on('click', function () {
         const text = String($('#rc_test_input').val() ?? '');
         const $out = $('#rc_test_result');
-        if (!text) { $out.text('请先输入测试文本'); return; }
+        if (!text) { $out.text('Enter test text first'); return; }
         const hit = detect(text, s);
-        if (!hit) { $out.text('未命中任何分组'); return; }
+        if (!hit) { $out.text('No group matched'); return; }
         const cutResult = cutText(text, hit.cutStart, s.deleteChars).replace(/\s+$/, '');
         const result = appendAfterCut(cutResult, s.appendText);
         const removed = Array.from(text).length - Array.from(cutResult).length;
         const appended = Array.from(String(s.appendText ?? '')).length;
-        const appendSummary = appended > 0 ? `，追加 ${appended} 个字符` : '';
+        const appendSummary = appended > 0 ? `, appended ${appended} characters` : '';
         $out.text(
-            `命中分组：[${hit.groupNames.join('、')}]，命中位置：${hit.cutStart}\n` +
-            `截断后（删除 ${removed} 个字符${appendSummary}）：\n${result || '（空）'}`
+            `Matched groups: [${hit.groupNames.join(', ')}], match position: ${hit.cutStart}
+` +
+            `After cut (${removed} characters deleted${appendSummary}):
+${result || '(empty)'}`
         );
     });
 
@@ -832,14 +836,14 @@ function registerSlashCommand() {
         if (!SlashCommandParser || !SlashCommand) return;
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             name: 'regexcut',
-            helpString: '按「正则截断」扩展的规则，对最后一条 AI 消息执行检测并截断。',
+            helpString: 'Run detection and cutoff on the last AI message using the Regex Cutoff rules.',
             callback: async () => {
                 await applyCutToLastMessage({ silent: false });
                 return '';
             },
         }));
     } catch (e) {
-        console.warn(LOG, '注册斜杠命令失败（可忽略）：', e);
+        console.warn(LOG, 'Failed to register slash command (safe to ignore): ', e);
     }
 }
 
@@ -874,8 +878,8 @@ jQuery(async () => {
         // 清理可能残留的注入
         clearContinuePrompt();
 
-        console.log(LOG, '已加载');
+        console.log(LOG, 'loaded');
     } catch (e) {
-        console.error(LOG, '初始化失败：', e);
+        console.error(LOG, 'Initialization failed: ', e);
     }
 });
